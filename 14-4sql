@@ -1,0 +1,36 @@
+CREATE DATABASE bank_db;
+
+USE bank_db;
+
+CREATE TABLE accounts (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    balance DECIMAL(15,2)
+);
+
+-- Thêm dữ liệu mẫu
+INSERT INTO accounts(balance) VALUES
+(1000000.00),
+(500000.00),
+(2000000.00);
+
+-- Xóa procedure cũ nếu đã tồn tại
+DROP PROCEDURE IF EXISTS transfer_funds;
+
+DELIMITER //
+
+CREATE PROCEDURE transfer_funds(
+    IN from_id INT,
+    IN to_id INT,
+    IN amount DECIMAL(15,2)
+)
+BEGIN
+    UPDATE accounts
+    SET balance = balance - amount
+    WHERE id = from_id;
+
+    UPDATE accounts
+    SET balance = balance + amount
+    WHERE id = to_id;
+END //
+
+DELIMITER ;
