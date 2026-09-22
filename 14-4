@@ -1,0 +1,205 @@
+import java.sql.CallableStatement;
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.util.Scanner;
+
+public class Main {
+
+    static String URL = "jdbc:mysql://localhost:3306/bank_db";
+    static String USER = "root";
+    static String PASSWORD = "YOUR_PASSWORD";
+
+    static Scanner scanner = new Scanner(System.in);
+
+    public static void main(String[] args) {
+        transferFunds();
+        scanner.close();
+    }
+
+    public static void transferFunds() {
+
+        Connection connection = null;
+        CallableStatement statement = null;
+
+        try {
+            // Kết nối database
+            connection = DriverManager.getConnection(
+                    URL,
+                    USER,
+                    PASSWORD
+            );
+
+            // Bắt đầu transaction
+            connection.setAutoCommit(false);
+
+            // Nhập tài khoản chuyển
+            int fromId;
+
+            while (true) {
+                try {
+                    System.out.print("Nhập ID tài khoản chuyển tiền: ");
+                    fromId = Integer.parseInt(scanner.nextLine());
+
+                    if (fromId <= 0) {
+                        System.out.println("ID phải lớn hơn 0!");
+                    } else {
+                        break;
+                    }
+
+                } catch (NumberFormatException e) {
+                    System.out.println("ID phải là số!");
+                }
+            }
+
+            // Nhập tài khoản nhận
+            int toId;
+
+            while (true) {
+                try {
+                    System.out.print("Nhập ID tài khoản nhận tiền: ");
+                    toId = Integer.parseInt(scanner.nextLine());
+
+                    if (toId <= 0) {
+                        System.out.println("ID phải lớn hơn 0!");
+                    } else if (toId == fromId) {
+                        System.out.println(
+                                "Tài khoản nhận phải khác tài khoản chuyển!"
+                        );
+                    } else {
+                        break;
+                    }
+
+                } catch (NumberFormatException e) {
+                    System.out.println("ID phải là số!");
+                }
+            }
+
+            // Nhập số tiền
+            double amount;
+
+            while (true) {
+                try {
+                    System.out.print("Nhập số tiền muốn chuyển: ");
+                    amount = Double.parseDouble(scanner.nextLine());
+
+                    if (amount <= 0) {
+                        System.out.println(
+                                "Số tiền phải lớn hơn 0!"
+                        );
+                    } else {
+                        break;
+                    }
+
+                } catch (NumberFormatException e) {
+                    System.out.println("Số tiền phải là số!");
+                }
+            }
+
+            // Kiểm tra tài khoản chuyển có tồn tại và đủ tiền
+            statement = connection.prepareCall(
+                    "SELECT balance FROM accounts WHERE id = ?"
+            );
+
+            statement.setInt(1, fromId);
+
+            ResultSet resultSet = statement.executeQuery();
+
+            if (!resultSet.next()) {
+                System.out.println(
+                        "Không tìm thấy tài khoản chuyển tiền!"
+                );
+
+                connection.rollback();
+                return;
+            }
+
+            double balance = resultSet.getDouble("balance");
+
+            resultSet.close();
+            statement.close();
+
+            if (balance < amount) {
+                System.out.println("Số dư không đủ để chuyển tiền!");
+
+                connection.rollback();
+                return;
+            }
+
+            // Kiểm tra tài khoản nhận có tồn tại
+            statement = connection.prepareCall(
+                    "SELECT id FROM accounts WHERE id = ?"
+            );
+
+            statement.setInt(1, toId);
+
+            resultSet = statement.executeQuery();
+
+            if (!resultSet.next()) {
+                System.out.println(
+                        "Không tìm thấy tài khoản nhận tiền!"
+                );
+
+                resultSet.close();
+                connection.rollback();
+                return;
+            }
+
+            resultSet.close();
+            statement.close();
+
+            // Gọi Stored Procedure
+            statement = connection.prepareCall(
+                    "{CALL transfer_funds(?, ?, ?)}"
+            );
+
+            statement.setInt(1, fromId);
+            statement.setInt(2, toId);
+            statement.setDouble(3, amount);
+
+            statement.execute();
+
+            // Lưu transaction
+            connection.commit();
+
+            System.out.println("Chuyển tiền thành công!");
+            System.out.println("Tài khoản chuyển: " + fromId);
+            System.out.println("Tài khoản nhận: " + toId);
+            System.out.println("Số tiền chuyển: " + amount);
+
+        } catch (SQLException e) {
+
+            // Có lỗi → rollback
+            try {
+                if (connection != null) {
+                    connection.rollback();
+                }
+            } catch (SQLException rollbackError) {
+                System.out.println("Không thể rollback!");
+            }
+
+            System.out.println("Chuyển tiền thất bại!");
+            System.out.println("Dữ liệu đã được rollback.");
+            System.out.println("Lỗi: " + e.getMessage());
+
+        } finally {
+
+            // Đóng tài nguyên
+            try {
+                if (statement != null) {
+                    statement.close();
+                }
+
+                if (connection != null) {
+                    connection.close();
+                }
+
+            } catch (SQLException e) {
+                System.out.println(
+                        "Lỗi khi đóng kết nối!"
+                );
+            }
+        }
+    }
+}
